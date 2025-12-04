@@ -1,36 +1,152 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Prize Wheel
+
+A modern prize wheel application built with Next.js and AWS Amplify. Users can spin a prize wheel once per day, and administrators can manage prizes through an admin panel.
+
+## Features
+
+- **Daily Prize Wheel**: Users can spin the wheel once every 24 hours
+- **User Authentication**: Powered by AWS Amplify Auth with email login
+- **Prize Management**: Admin panel at `/admin` to add, edit, and manage prizes
+- **Auto-Redirect**: Winners are automatically redirected to prize-specific URLs
+- **Prize Removal**: Won prizes are automatically removed from the wheel
+- **Responsive Design**: Clean, modern UI inspired by pocketmacro.com
+
+## Tech Stack
+
+- **Next.js 15** with App Router
+- **TypeScript**
+- **Tailwind CSS**
+- **AWS Amplify** for backend (Auth + Data)
+- **DynamoDB** for database (managed by Amplify)
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 18+ installed
+- AWS Account
+- AWS CLI configured (optional, but recommended)
+
+### Installation
+
+1. Navigate to the project directory:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd prize-wheel
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Start the Amplify sandbox:
+```bash
+npx ampx sandbox
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This will:
+- Deploy your backend to AWS
+- Create DynamoDB tables
+- Set up authentication
+- Generate the `amplify_outputs.json` file
 
-## Learn More
+4. In a new terminal, start the development server:
+```bash
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Usage
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### For Users
 
-## Deploy on Vercel
+1. Sign up or log in with your email
+2. Spin the wheel once per day
+3. If you win, you'll be redirected to the prize URL after 2 seconds
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### For Admins
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Navigate to `/admin`
+2. Add new prizes with:
+   - Prize name
+   - Description (optional)
+   - Redirect URL (where winners will be sent)
+   - Color for the wheel segment
+3. Activate/deactivate prizes
+4. Delete prizes as needed
+
+## Database Schema
+
+### Prize Table
+- `id`: String (auto-generated)
+- `name`: String (required)
+- `description`: String (optional)
+- `redirectUrl`: String (required)
+- `color`: String (hex color for wheel segment)
+- `isActive`: Boolean (determines if prize appears on wheel)
+
+### UserSpin Table
+- `id`: String (auto-generated)
+- `userId`: String (required, linked to authenticated user)
+- `lastSpinDate`: Date (required, tracks last spin)
+- `prizesWon`: Array of strings (prize IDs)
+
+## Security
+
+- User authentication required for all operations
+- Users can only read prizes and manage their own spin records
+- Admin group required for prize management (you'll need to add users to the "admins" group in AWS Cognito)
+
+## Deployment
+
+To deploy to production:
+
+1. Deploy the backend:
+```bash
+npx ampx sandbox delete
+npx ampx generate outputs --branch main
+```
+
+2. Deploy to your preferred hosting (Vercel, AWS Amplify Hosting, etc.)
+
+For Vercel:
+```bash
+npm run build
+vercel --prod
+```
+
+## Environment Variables
+
+The `amplify_outputs.json` file is auto-generated and contains all necessary configuration. Do not commit this file to version control in production - use environment-specific configurations instead.
+
+## Customization
+
+### Changing the Wheel Animation
+Edit `components/PrizeWheel.tsx` and adjust the `spinWheel` function's timing and easing.
+
+### Styling
+- Global styles: `app/globals.css`
+- Component-specific: Inline Tailwind classes
+- Colors: Update the gradient colors in `app/page.tsx` and `app/admin/page.tsx`
+
+## Troubleshooting
+
+**Amplify sandbox not starting:**
+- Make sure you're in the project directory
+- Check that the `amplify` folder exists
+- Run `npm install @aws-amplify/backend @aws-amplify/backend-cli`
+
+**Authentication errors:**
+- Make sure the sandbox is running
+- Check that `amplify_outputs.json` exists
+- Clear browser cache and try again
+
+**Can't access admin panel:**
+- Make sure you're logged in
+- Add your user to the "admins" group in AWS Cognito User Pools
+- The admin panel requires group-based authorization
+
+## License
+
+MIT

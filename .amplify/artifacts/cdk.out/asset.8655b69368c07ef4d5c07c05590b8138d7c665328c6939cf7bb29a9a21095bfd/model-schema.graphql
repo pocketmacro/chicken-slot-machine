@@ -1,0 +1,17 @@
+type Prize @model @auth(rules: [{allow: private, operations: [read]},
+  {allow: groups, groups: ["admins"]}])
+{
+  name: String!
+  description: String
+  redirectUrl: String!
+  color: String
+  isActive: Boolean @default(value: "true")
+}
+
+type UserSpin @model @auth(rules: [{allow: owner, ownerField: "owner"},
+  {allow: groups, groups: ["admins"]}])
+{
+  userId: String!
+  lastSpinDate: AWSDate!
+  prizesWon: [String]
+}
