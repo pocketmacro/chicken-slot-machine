@@ -5,8 +5,11 @@ const schema = a.schema({
     .model({
       name: a.string().required(),
       description: a.string(),
-      redirectUrl: a.string().required(),
+      redirectUrls: a.string().array().required(),
+      imageUrl: a.string(),
       color: a.string(),
+      weight: a.integer().default(10),
+      quantity: a.integer().default(1),
       isActive: a.boolean().default(true),
     })
     .authorization((allow) => [

@@ -6,7 +6,11 @@ interface Prize {
   id: string;
   name: string;
   color: string;
-  redirectUrl: string;
+  redirectUrls: string[];
+  imageUrl?: string;
+  weight: number;
+  quantity: number;
+  initialQuantity: number;
 }
 
 interface SlotMachineProps {
@@ -53,6 +57,25 @@ export default function ChickenSlotMachine({
 
   const getRandomChicken = () => {
     return CHICKEN_EMOJIS[Math.floor(Math.random() * CHICKEN_EMOJIS.length)];
+  };
+
+  const selectWeightedPrize = (availablePrizes: Prize[]): Prize => {
+    // Calculate total weight
+    const totalWeight = availablePrizes.reduce((sum, prize) => sum + prize.weight, 0);
+
+    // Random number between 0 and total weight
+    let random = Math.random() * totalWeight;
+
+    // Select prize based on weight
+    for (const prize of availablePrizes) {
+      random -= prize.weight;
+      if (random <= 0) {
+        return prize;
+      }
+    }
+
+    // Fallback (should never reach here)
+    return availablePrizes[0];
   };
 
   const spinSlots = () => {
@@ -111,10 +134,11 @@ export default function ChickenSlotMachine({
           setTimeout(() => {
             setSpinning(false);
             if (willWin) {
-              const randomPrize = prizes[Math.floor(Math.random() * prizes.length)];
-              setMessage(`🎉 WINNER! You won ${randomPrize.name}! 🎉`);
+              // Use weighted random selection
+              const selectedPrize = selectWeightedPrize(prizes);
+              setMessage(`🎉 WINNER! You won ${selectedPrize.name}! 🎉`);
               setTimeout(() => {
-                onWin(randomPrize);
+                onWin(selectedPrize);
               }, 1000);
             } else {
               const randomLossMessage = LOSS_MESSAGES[Math.floor(Math.random() * LOSS_MESSAGES.length)];
@@ -252,6 +276,35 @@ export default function ChickenSlotMachine({
           Good luck! 🍀
         </p>
       </div>
+
+      {/* Prize Images Gallery */}
+      {prizes.some(p => p.imageUrl) && (
+        <div className="mt-8">
+          <h3 className="text-white text-2xl font-bold text-center mb-4">
+            🎁 Available Prizes 🎁
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
+            {prizes.filter(p => p.imageUrl).map((prize) => (
+              <div
+                key={prize.id}
+                className="bg-white/10 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-white/20 hover:scale-105 transition-transform"
+              >
+                <img
+                  src={prize.imageUrl}
+                  alt={prize.name}
+                  className="w-full h-32 object-cover rounded-lg mb-2"
+                />
+                <p className="text-white text-sm font-semibold text-center">
+                  {prize.name}
+                </p>
+                <p className="text-white/70 text-xs text-center">
+                  {prize.weight <= 5 ? "⭐ Very Rare" : prize.weight <= 20 ? "✨ Rare" : prize.weight <= 50 ? "💫 Uncommon" : "🌟 Common"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

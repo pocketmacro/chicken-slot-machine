@@ -14,7 +14,11 @@ interface Prize {
   id: string;
   name: string;
   color: string;
-  redirectUrl: string;
+  redirectUrls: string[];
+  imageUrl?: string;
+  weight: number;
+  quantity: number;
+  initialQuantity: number; // Track original quantity to calculate which URL to use
 }
 
 const SPIN_COOLDOWN_HOURS = 2;
@@ -42,12 +46,18 @@ export default function MainApp({ onSignOut, userEmail }: MainAppProps) {
         filter: { isActive: { eq: true } },
       });
       setPrizes(
-        data.map((p) => ({
-          id: p.id,
-          name: p.name || "",
-          color: p.color || "",
-          redirectUrl: p.redirectUrl || "",
-        }))
+        data
+          .filter((p) => (p.quantity ?? 0) > 0) // Only show prizes with quantity available
+          .map((p) => ({
+            id: p.id,
+            name: p.name || "",
+            color: p.color || "",
+            redirectUrls: p.redirectUrls || [],
+            imageUrl: p.imageUrl || undefined,
+            weight: p.weight ?? 10,
+            quantity: p.quantity ?? 1,
+            initialQuantity: (p.redirectUrls?.length ?? 1), // Initial quantity = number of URLs
+          }))
       );
     } catch (error) {
       console.error("Error loading prizes:", error);
@@ -138,13 +148,22 @@ export default function MainApp({ onSignOut, userEmail }: MainAppProps) {
         });
       }
 
+      // Calculate which URL to use based on remaining quantity
+      // If initial quantity was 5 and current quantity is 3, we want URL index 2 (the 3rd URL that was given out)
+      const urlIndex = prize.initialQuantity - prize.quantity;
+      const redirectUrl = prize.redirectUrls[urlIndex] || prize.redirectUrls[0];
+
+      // Decrement the quantity
+      const newQuantity = prize.quantity - 1;
       await client.models.Prize.update({
         id: prize.id,
-        isActive: false,
+        quantity: newQuantity,
+        // Auto-disable if quantity reaches 0
+        isActive: newQuantity > 0,
       });
 
       setTimeout(() => {
-        window.location.href = prize.redirectUrl;
+        window.location.href = redirectUrl;
       }, 2000);
     } catch (error) {
       console.error("Error recording win:", error);

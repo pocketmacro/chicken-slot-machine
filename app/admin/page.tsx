@@ -6,6 +6,7 @@ import "@aws-amplify/ui-react/styles.css";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import { fetchAuthSession } from "aws-amplify/auth";
+import { uploadData, getUrl } from "aws-amplify/storage";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -18,8 +19,11 @@ interface Prize {
   id: string;
   name: string;
   description?: string;
-  redirectUrl: string;
+  redirectUrls: string[];
+  imageUrl?: string;
   color: string;
+  weight: number;
+  quantity: number;
   isActive: boolean;
 }
 
@@ -50,9 +54,14 @@ export default function AdminPage() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    redirectUrl: "",
+    redirectUrls: [""],
+    imageUrl: "",
     color: "#3B82F6",
+    weight: 10,
+    quantity: 1,
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
   const [modal, setModal] = useState<ModalState>({
     type: null,
     title: "",
@@ -97,8 +106,11 @@ export default function AdminPage() {
           id: p.id,
           name: p.name || "",
           description: p.description || "",
-          redirectUrl: p.redirectUrl || "",
+          redirectUrls: p.redirectUrls || [],
+          imageUrl: p.imageUrl || "",
           color: p.color || "",
+          weight: p.weight ?? 10,
+          quantity: p.quantity ?? 1,
           isActive: p.isActive ?? true,
         }))
       );
@@ -166,25 +178,72 @@ export default function AdminPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate: number of URLs should match quantity
+    const validUrls = formData.redirectUrls.filter(url => url.trim() !== "");
+    if (validUrls.length !== formData.quantity) {
+      setModal({
+        type: "alert",
+        title: "Invalid URLs",
+        message: `You must provide exactly ${formData.quantity} URL(s) to match the quantity.`,
+        alertType: "error",
+      });
+      return;
+    }
+
     try {
+      let imageUrl = "";
+
+      // Upload image to S3 if provided
+      if (imageFile) {
+        const fileName = `prize-images/${Date.now()}-${imageFile.name}`;
+        const result = await uploadData({
+          path: fileName,
+          data: imageFile,
+          options: {
+            contentType: imageFile.type
+          }
+        }).result;
+
+        // Get the URL for the uploaded image
+        const urlResult = await getUrl({
+          path: fileName
+        });
+        imageUrl = urlResult.url.toString();
+      }
+
       await client.models.Prize.create({
         name: formData.name,
         description: formData.description,
-        redirectUrl: formData.redirectUrl,
+        redirectUrls: validUrls,
+        imageUrl: imageUrl || undefined,
         color: formData.color,
+        weight: formData.weight,
+        quantity: formData.quantity,
         isActive: true,
       });
 
       setFormData({
         name: "",
         description: "",
-        redirectUrl: "",
+        redirectUrls: [""],
+        imageUrl: "",
         color: "#3B82F6",
+        weight: 10,
+        quantity: 1,
       });
+      setImageFile(null);
+      setImagePreview("");
       setShowForm(false);
       loadPrizes();
     } catch (error) {
       console.error("Error creating prize:", error);
+      setModal({
+        type: "alert",
+        title: "Error",
+        message: "Failed to create prize. Please try again.",
+        alertType: "error",
+      });
     }
   };
 
@@ -327,18 +386,114 @@ export default function AdminPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-white/90 mb-1">
-                      Redirect URL
+                      Prize Image
                     </label>
                     <input
-                      type="url"
-                      required
-                      value={formData.redirectUrl}
-                      onChange={(e) =>
-                        setFormData({ ...formData, redirectUrl: e.target.value })
-                      }
-                      className="w-full px-4 py-2 bg-white/90 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                      placeholder="https://example.com/prize"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setImageFile(file);
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setImagePreview(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="w-full px-4 py-2 bg-white/90 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-yellow-500 file:text-white file:cursor-pointer hover:file:bg-yellow-600"
                     />
+                    {imagePreview && (
+                      <div className="mt-2">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="w-32 h-32 object-cover rounded-lg border-2 border-white/30"
+                        />
+                      </div>
+                    )}
+                    <p className="text-xs text-white/70 mt-1">
+                      Upload an image for this prize (optional, recommended 400x400px)
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white/90 mb-1">
+                        Weight (1-100)
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max="100"
+                        value={formData.weight}
+                        onChange={(e) =>
+                          setFormData({ ...formData, weight: parseInt(e.target.value) || 10 })
+                        }
+                        className="w-full px-4 py-2 bg-white/90 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                        placeholder="10"
+                      />
+                      <p className="text-xs text-white/70 mt-1">
+                        Higher = more common (1=rare, 100=very common)
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-white/90 mb-1">
+                        Quantity Available
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={formData.quantity}
+                        onChange={(e) => {
+                          const newQty = parseInt(e.target.value) || 1;
+                          setFormData({
+                            ...formData,
+                            quantity: newQty,
+                            redirectUrls: Array(newQty).fill("").map((_, i) => formData.redirectUrls[i] || "")
+                          });
+                        }}
+                        className="w-full px-4 py-2 bg-white/90 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                        placeholder="1"
+                      />
+                      <p className="text-xs text-white/70 mt-1">
+                        How many can be won
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-white/90 mb-2">
+                      Redirect URLs (one per quantity)
+                    </label>
+                    <div className="space-y-2">
+                      {formData.redirectUrls.map((url, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <span className="text-white/80 text-sm font-medium min-w-[60px]">
+                            URL #{index + 1}:
+                          </span>
+                          <input
+                            type="url"
+                            required
+                            value={url}
+                            onChange={(e) => {
+                              const newUrls = [...formData.redirectUrls];
+                              newUrls[index] = e.target.value;
+                              setFormData({ ...formData, redirectUrls: newUrls });
+                            }}
+                            className="flex-1 px-4 py-2 bg-white/90 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                            placeholder="https://example.com/prize"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-white/70 mt-2">
+                      Each prize needs its own unique URL. Add {formData.quantity} URL(s) total.
+                    </p>
                   </div>
 
                   <div>
@@ -386,7 +541,10 @@ export default function AdminPage() {
                       Redirect URL
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/90 uppercase tracking-wider">
-                      Color
+                      Weight
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/90 uppercase tracking-wider">
+                      Quantity
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/90 uppercase tracking-wider">
                       Status
@@ -409,26 +567,30 @@ export default function AdminPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
-                        <a
-                          href={prize.redirectUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-yellow-300 hover:text-yellow-200 truncate block max-w-xs"
-                        >
-                          {prize.redirectUrl}
-                        </a>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-8 h-8 rounded"
-                            style={{ backgroundColor: prize.color }}
-                          />
-                          <span className="text-sm text-white/80">
-                            {prize.color}
-                          </span>
+                      <td className="px-6 py-4 text-sm text-white/80">
+                        <div className="space-y-1">
+                          {prize.redirectUrls.map((url, idx) => (
+                            <a
+                              key={idx}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-yellow-300 hover:text-yellow-200 truncate block max-w-xs"
+                            >
+                              {idx + 1}. {url}
+                            </a>
+                          ))}
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
+                        <span className="font-medium">{prize.weight}</span>
+                        <span className="text-xs text-white/60 block">
+                          {prize.weight <= 5 ? "Very Rare" : prize.weight <= 20 ? "Rare" : prize.weight <= 50 ? "Uncommon" : "Common"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
+                        <span className="font-medium">{prize.quantity}</span>
+                        <span className="text-xs text-white/60 block">available</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
